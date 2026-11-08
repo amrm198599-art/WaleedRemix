@@ -1,4 +1,4 @@
-name: Build waleed remix (APK + AAB)
+Name: Build waleed remix (APK + AAB)
 
 on:
   push:
@@ -18,27 +18,26 @@ jobs:
       VERSION_NAME: 1.0.${{ github.run_number }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Locate or Unzip project files
         run: |
-          if [ -f settings.gradle.kts ] || [ -f settings.gradle ]; then
+          if [ -f settings.gradle.kts ] || [ -f settings.gradle ]; then 
             echo "Project found in repo root"
             echo "PROJECT_DIR=." >> $GITHUB_ENV
-          else
-            ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1 || true)
+          else 
+            ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1)
             if [ -z "$ZIP" ]; then
-              echo "::error::No project found. Please ensure project files or a .zip are present in the repo root."
+              echo "::error::No zip found"
               exit 1
             fi
-            rm -rf _src && mkdir -p _src
-            unzip -q -o "$ZIP" -d _src
-            FOUND=$(find _src -maxdepth 4 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+            rm -rf _src && mkdir -p _src && unzip -q -o "$ZIP" -d _src
+            FOUND=$(find _src -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)
             if [ -z "$FOUND" ]; then
-              echo "::error::settings.gradle(.kts) not found inside the uploaded ZIP archive."
+              echo "::error::settings.gradle not found"
               exit 1
-            }
+            fi
             DIR_NAME=$(dirname "$FOUND")
             echo "PROJECT_DIR=$DIR_NAME" >> $GITHUB_ENV
             echo "Found project at: $DIR_NAME"
@@ -65,7 +64,6 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: |
-          # البحث عن ملف gradlew وإعطاؤه صلاحيات التنفيذ بغض النظر عن مكان وجوده
           find . -name "gradlew" -exec chmod +x {} +
 
       - name: Decode keystore
@@ -80,41 +78,34 @@ jobs:
           echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
 
       - name: Build signed APK and AAB
+        working-directory: ${{ env.PROJECT_DIR }}
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -o pipefail
-          # تحديد المسار الفعلي للـ gradlew وتشغيل البناء
-          GW=$(find . -name "gradlew" | head -n 1)
-          if [ -z "$GW" ]; then
-            GW="gradle"
-          fi
-          
-          $GW --no-daemon --stacktrace --warning-mode=summary \
+          gradle --no-daemon --stacktrace --warning-mode=summary \
             -PversionCode=${{ env.VERSION_CODE }} \
             -PversionName=${{ env.VERSION_NAME }} \
             assembleRelease bundleRelease 2>&1 | tee build.log
 
-      - name: Show build errors if failed
+      - name: Show build errors
         if: failure()
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          if [ -f build.log ]; then
-            grep -E "^e: |error:|FAILED|What went wrong|Execution failed|Could not resolve" -A4 build.log | head -n 120 || true
-          fi
+          grep -E "^e: |error:|FAILED|What went wrong|Execution failed|Could not resolve" -A4 build.log | head -n 120 || true
 
-      - name: Upload build log on failure
+      - name: Upload build log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: ${{ env.PROJECT_DIR }}/build.log
 
       - name: Collect outputs
         run: |
           mkdir -p dist
-          # البحث الديناميكي عن مخرجات البناء ونسخها بغض النظر عن اختلاف المسارات الفرعية
           APK_FILE=$(find . -path "*/build/outputs/apk/release/*.apk" | head -n 1)
           AAB_FILE=$(find . -path "*/build/outputs/bundle/release/*.aab" | head -n 1)
           
@@ -125,13 +116,13 @@ jobs:
             cp "$AAB_FILE" "dist/waleed-remix-${{ env.VERSION_NAME }}.aab"
           fi
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: waleed-remix-apk-${{ env.VERSION_NAME }}
           path: dist/*.apk
 
-      - name: Upload AAB Artifact
+      - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
           name: waleed-remix-aab-${{ env.VERSION_NAME }}
