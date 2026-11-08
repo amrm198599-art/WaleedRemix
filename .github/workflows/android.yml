@@ -1,4 +1,4 @@
-Name: Build waleed remix (APK + AAB)
+name: Build waleed remix (APK + AAB)
 
 on:
   push:
